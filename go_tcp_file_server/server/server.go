@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -82,15 +85,37 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 			return
 		default:
 			buf := make([]byte, BUFF_SIZE)
-			for {
-				n, err := conn.Read(buf)
+			file_info := make([]byte, BUFF_SIZE)
+			n, _ := conn.Read(file_info)
+			fmt.Printf("num bytes read is %d\n", n)
+			fmt.Println(string(file_info[:n]))
+			conn.Write([]byte("Read"))
+			file_info_slice := strings.Split(string(file_info[:n]), " ")
+			file_name := file_info_slice[0]
+			file_size, err := strconv.Atoi(file_info_slice[1])
+			fmt.Printf("File Name is %s, file size is %d\n", file_name, file_size)
+			if err != nil {
+				return
+			}
+			file, err := os.Create(file_name)
+			if err != nil {
+				log.Printf("Error opening the file %s to write\n", file_name)
+				return
+			}
+			numLoops := file_size / BUFF_SIZE
+			numRemainingBytes := file_size % BUFF_SIZE
+			for i := 0; i < numLoops; i++ {
+				_, err := io.ReadFull(conn, buf)
+				file.Write(buf)
 				if err != nil {
 					log.Println(err)
 					return
 				}
-
-				fmt.Printf("Client %s sent %s\n", conn.RemoteAddr().String(), strings.TrimRight(string(buf[:n]), "\n"))
 			}
+			_, err = io.ReadAtLeast(conn, buf, numRemainingBytes)
+			fmt.Printf("numLoops is %d, numRemBytes is %d\n", numLoops, numRemainingBytes)
+			file.Write(buf[:numRemainingBytes])
+			file.Sync()
 		}
 	}
 
